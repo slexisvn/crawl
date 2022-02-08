@@ -7,6 +7,7 @@ function convertToCSV(arr) {
 
   return array
     .map((it) => {
+      console.log(it)
       return Object.values(it).toString();
     })
     .join("\n");

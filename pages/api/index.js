@@ -13,7 +13,6 @@ export default async function handler(req, res) {
         const users = await User.find({}).select(
           "login repo name location email profileLink -_id"
         );
-        console.log(users);
         res.status(200).json({ success: true, data: users });
       } catch (error) {
         res.status(400).json({ success: false });
@@ -31,13 +30,11 @@ export default async function handler(req, res) {
         }
 
         const urls = [];
-        const newUsers = [];
         const regex = /https:\/\/github\.com\/(\w+)\/(\w+)(\/|)/g;
         const owner = githubLink.replace(regex, "$1");
         const repo = githubLink.replace(regex, "$2");
-        const octokit = new Octokit({
-          auth: "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",
-        });
+        const octokit = new Octokit();
+        let users = await User.find({ repo: `${owner}/${repo}` })
         const stargazers = await octokit.request(
           "GET /repos/{owner}/{repo}/stargazers",
           {
@@ -46,36 +43,36 @@ export default async function handler(req, res) {
           }
         );
 
+        users = users.map(user => user.login)
+
         stargazers.data.forEach((stargazer) => {
-          urls.push(`GET /users/${stargazer.login}`);
+          if (!users.includes(stargazer.login)) {
+            urls.push(`GET /users/${stargazer.login}`);
+          }
         });
 
-        Promise.all(
+        const newUsers = await Promise.all(
           urls.map((url) =>
             octokit
               .request(url, {
                 owner,
                 repo,
               })
-              .then(res => res)
-              .catch((err) => console.error(err))
           )
         ).then((responses) =>
-          responses.forEach((res) => {
-            newUsers.push({
-              login: res.login,
-              repo,
-              name: res.name,
-              location: res.location,
-              email: res.email,
-              profileLink: res.profileLink,
-            });
-          })
+          responses.map((res) => ({
+            login: res.data.login,
+            repo: `${owner}/${repo}`,
+            name: res.data.name,
+            location: res.data.location.replace(';', ','),
+            email: res.data.email,
+            profileLink: res.data.profileLink,
+          }))
         );
-console.log(newUsers)
-        // const users = await User.create(newUsers);
 
-        // res.status(201).json({ success: true, data: users });
+        const data = await User.create(newUsers);
+
+        res.status(201).json({ success: true, data });
       } catch (error) {
         res.status(400).json({ success: false });
       }
